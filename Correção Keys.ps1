@@ -1,24 +1,44 @@
 $ErrorActionPreference = "Stop"
+$ProgressPreference = "SilentlyContinue"
 
-# Link direto para o ZIP
-$ZipUrl = "https://pandorakeys.com/admin/Corre%C3%A7%C3%A3o.zip"
-
-# Nome da pasta que existe dentro do ZIP
+$ZipUrl = "https://pandorakeys.com/admin/Correcao.zip"
 $NomePasta = "opensteamtool"
 
-# Pasta temporária
 $PastaTemporaria = Join-Path $env:TEMP "SteamFix"
-$ArquivoZip = Join-Path $PastaTemporaria "Correcao.zip"
+$ArquivoZip = Join-Path $PastaTemporaria "correcao.zip"
 $PastaExtraida = Join-Path $PastaTemporaria "extraido"
 
-try {
-    Write-Host ""
-    Write-Host "Localizando a Steam..." -ForegroundColor Cyan
+function Mostrar-Etapa {
+    param(
+        [string]$Mensagem,
+        [int]$Porcentagem
+    )
 
-    # Lista de possíveis locais da Steam
+    Write-Progress `
+        -Activity "Atualizando a Steam" `
+        -Status $Mensagem `
+        -PercentComplete $Porcentagem
+
+    Write-Host "  $Mensagem" -ForegroundColor Cyan
+}
+
+Clear-Host
+
+$Host.UI.RawUI.WindowTitle = "Atualização da Steam"
+
+Write-Host ""
+Write-Host "  =======================================" -ForegroundColor DarkMagenta
+Write-Host "          ATUALIZACAO DA STEAM" -ForegroundColor Magenta
+Write-Host "  =======================================" -ForegroundColor DarkMagenta
+Write-Host ""
+Write-Host "  Aguarde enquanto preparamos tudo..." -ForegroundColor Gray
+Write-Host ""
+
+try {
+    Mostrar-Etapa "Verificando a instalacao..." 10
+
     $PossiveisCaminhos = @()
 
-    # Steam registrada no usuário atual
     $RegistroUsuario = Get-ItemProperty `
         -Path "HKCU:\Software\Valve\Steam" `
         -ErrorAction SilentlyContinue
@@ -27,7 +47,6 @@ try {
         $PossiveisCaminhos += $RegistroUsuario.SteamPath
     }
 
-    # Steam registrada no Windows 64 bits
     $Registro64 = Get-ItemProperty `
         -Path "HKLM:\SOFTWARE\WOW6432Node\Valve\Steam" `
         -ErrorAction SilentlyContinue
@@ -36,7 +55,6 @@ try {
         $PossiveisCaminhos += $Registro64.InstallPath
     }
 
-    # Steam registrada no Windows 32 bits
     $Registro32 = Get-ItemProperty `
         -Path "HKLM:\SOFTWARE\Valve\Steam" `
         -ErrorAction SilentlyContinue
@@ -45,7 +63,6 @@ try {
         $PossiveisCaminhos += $Registro32.InstallPath
     }
 
-    # Caminhos padrões
     if (${env:ProgramFiles(x86)}) {
         $PossiveisCaminhos += "${env:ProgramFiles(x86)}\Steam"
     }
@@ -58,7 +75,6 @@ try {
         $PossiveisCaminhos += "$env:LOCALAPPDATA\Steam"
     }
 
-    # Seleciona o primeiro caminho que realmente contém steam.exe
     $SteamPath = $PossiveisCaminhos |
         Where-Object {
             $_ -and (Test-Path (Join-Path $_ "steam.exe"))
@@ -66,44 +82,28 @@ try {
         Select-Object -First 1
 
     if (-not $SteamPath) {
-        throw "Não foi possível encontrar automaticamente a instalação da Steam."
+        throw "Steam não encontrada."
     }
 
-    $SteamPath = $SteamPath.TrimEnd("\", "/")
+    Mostrar-Etapa "Preparando a atualizacao..." 25
 
-    Write-Host "Steam encontrada em:" -ForegroundColor Green
-    Write-Host $SteamPath -ForegroundColor Yellow
+    Get-Process `
+        -Name "steam", "steamwebhelper", "GameOverlayUI" `
+        -ErrorAction SilentlyContinue |
+        Stop-Process `
+            -Force `
+            -ErrorAction SilentlyContinue
 
-    # Fecha a Steam
-    Write-Host ""
-    Write-Host "Fechando a Steam..." -ForegroundColor Cyan
+    Start-Sleep -Seconds 2
 
-    $ProcessosSteam = @(
-        "steam",
-        "steamwebhelper",
-        "GameOverlayUI"
-    )
-
-    foreach ($Processo in $ProcessosSteam) {
-        Get-Process `
-            -Name $Processo `
-            -ErrorAction SilentlyContinue |
-            Stop-Process `
-                -Force `
-                -ErrorAction SilentlyContinue
-    }
-
-    Start-Sleep -Seconds 3
-
-    # Limpa pasta temporária de execução anterior
     if (Test-Path $PastaTemporaria) {
         Remove-Item `
             -Path $PastaTemporaria `
             -Recurse `
-            -Force
+            -Force `
+            -ErrorAction SilentlyContinue
     }
 
-    # Cria as pastas temporárias
     New-Item `
         -ItemType Directory `
         -Path $PastaTemporaria `
@@ -116,9 +116,7 @@ try {
         -Force |
         Out-Null
 
-    # Baixa o ZIP
-    Write-Host ""
-    Write-Host "Baixando a correção..." -ForegroundColor Cyan
+    Mostrar-Etapa "Obtendo os dados necessarios..." 45
 
     Invoke-WebRequest `
         -Uri $ZipUrl `
@@ -126,22 +124,16 @@ try {
         -UseBasicParsing
 
     if (-not (Test-Path $ArquivoZip)) {
-        throw "O arquivo ZIP não foi baixado."
+        throw "Falha no download."
     }
 
-    if ((Get-Item $ArquivoZip).Length -eq 0) {
-        throw "O arquivo ZIP baixado está vazio."
-    }
-
-    # Extrai o ZIP
-    Write-Host "Extraindo os arquivos..." -ForegroundColor Cyan
+    Mostrar-Etapa "Aplicando a correcao..." 65
 
     Expand-Archive `
         -Path $ArquivoZip `
         -DestinationPath $PastaExtraida `
         -Force
 
-    # Procura a pasta opensteamtool dentro do ZIP
     $PastaEncontrada = Get-ChildItem `
         -Path $PastaExtraida `
         -Recurse `
@@ -153,35 +145,17 @@ try {
         Select-Object -First 1
 
     if (-not $PastaEncontrada) {
-        throw "A pasta '$NomePasta' não foi encontrada dentro do ZIP."
+        throw "Conteúdo inválido."
     }
 
-    # Destino final:
-    # C:\Program Files (x86)\Steam\opensteamtool
     $Destino = Join-Path $SteamPath $NomePasta
 
-    # Faz backup da pasta antiga, caso exista
     if (Test-Path $Destino) {
-        $DataBackup = Get-Date -Format "yyyyMMdd-HHmmss"
-        $DestinoBackup = Join-Path `
-            $SteamPath `
-            "${NomePasta}_backup_$DataBackup"
-
-        Write-Host ""
-        Write-Host "Criando backup da instalação antiga..." -ForegroundColor Cyan
-
-        Move-Item `
+        Remove-Item `
             -Path $Destino `
-            -Destination $DestinoBackup `
+            -Recurse `
             -Force
-
-        Write-Host "Backup criado em:" -ForegroundColor Yellow
-        Write-Host $DestinoBackup -ForegroundColor Yellow
     }
-
-    # Copia a pasta completa
-    Write-Host ""
-    Write-Host "Instalando a correção..." -ForegroundColor Cyan
 
     Copy-Item `
         -LiteralPath $PastaEncontrada.FullName `
@@ -190,39 +164,58 @@ try {
         -Force
 
     if (-not (Test-Path $Destino)) {
-        throw "A pasta não foi copiada corretamente para a Steam."
+        throw "Falha na instalação."
     }
 
-    Write-Host ""
-    Write-Host "Correção concluída com sucesso!" -ForegroundColor Green
-    Write-Host "Pasta instalada em:" -ForegroundColor Green
-    Write-Host $Destino -ForegroundColor Yellow
+    Mostrar-Etapa "Finalizando..." 90
 
-    # Abre a Steam novamente
+    if (Test-Path $PastaTemporaria) {
+        Remove-Item `
+            -Path $PastaTemporaria `
+            -Recurse `
+            -Force `
+            -ErrorAction SilentlyContinue
+    }
+
+    Write-Progress `
+        -Activity "Atualizando a Steam" `
+        -Completed
+
+    Clear-Host
+
+    Write-Host ""
+    Write-Host "  =======================================" -ForegroundColor DarkGreen
+    Write-Host "          ATUALIZACAO CONCLUIDA" -ForegroundColor Green
+    Write-Host "  =======================================" -ForegroundColor DarkGreen
+    Write-Host ""
+    Write-Host "  Tudo pronto! A Steam sera iniciada." -ForegroundColor White
+    Write-Host ""
+
+    Start-Sleep -Seconds 2
+
     $SteamExe = Join-Path $SteamPath "steam.exe"
 
     if (Test-Path $SteamExe) {
-        Write-Host ""
-        Write-Host "Abrindo a Steam..." -ForegroundColor Cyan
         Start-Process $SteamExe
     }
 }
 catch {
-    Write-Host ""
-    Write-Host "Ocorreu um erro:" -ForegroundColor Red
-    Write-Host $_.Exception.Message -ForegroundColor Red
+    Write-Progress `
+        -Activity "Atualizando a Steam" `
+        -Completed
 
-    if (
-        $_.Exception.Message -match
-        "acesso|access|permissão|permission"
-    ) {
-        Write-Host ""
-        Write-Host "Abra o PowerShell como administrador e tente novamente." `
-            -ForegroundColor Yellow
-    }
+    Clear-Host
+
+    Write-Host ""
+    Write-Host "  =======================================" -ForegroundColor DarkRed
+    Write-Host "       NAO FOI POSSIVEL CONCLUIR" -ForegroundColor Red
+    Write-Host "  =======================================" -ForegroundColor DarkRed
+    Write-Host ""
+    Write-Host "  Abra o PowerShell como administrador" -ForegroundColor Yellow
+    Write-Host "  e tente executar novamente." -ForegroundColor Yellow
+    Write-Host ""
 }
 finally {
-    # Apaga somente os arquivos temporários
     if (Test-Path $PastaTemporaria) {
         Remove-Item `
             -Path $PastaTemporaria `
