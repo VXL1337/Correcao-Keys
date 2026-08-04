@@ -1,19 +1,26 @@
 $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"
 
-# Link RAW deste script
-$ScriptUrl = "https://raw.githubusercontent.com/VXL1337/Correcao-Keys/main/correcao-keys.ps1"
+# Forca TLS moderno para os downloads
+[Net.ServicePointManager]::SecurityProtocol = `
+    [Net.SecurityProtocolType]::Tls12
 
-# Link direto do arquivo ZIP
+# Nome real do arquivo hospedado no GitHub
+$ScriptUrlBase = "https://raw.githubusercontent.com/VXL1337/Correcao-Keys/main/Correcao%20Keys.ps1"
+
+# Link direto do pacote
 $ZipUrl = "https://pandorakeys.com/admin/Correcao.zip"
 
-# Pasta que existe dentro do ZIP
+# Pasta existente dentro do ZIP
 $NomePasta = "opensteamtool"
 
-# Arquivos temporarios
+# Diretorios temporarios
 $PastaTemporaria = Join-Path $env:TEMP "SteamFix"
 $ArquivoZip = Join-Path $PastaTemporaria "correcao.zip"
 $PastaExtraida = Join-Path $PastaTemporaria "extraido"
+$ArquivoLog = Join-Path $env:TEMP "SteamFix-erro.txt"
+
+$EtapaAtual = "iniciando"
 
 function Testar-Administrador {
     $Identidade = [Security.Principal.WindowsIdentity]::GetCurrent()
@@ -35,11 +42,15 @@ function Mostrar-Cabecalho {
     catch {}
 
     Write-Host ""
-    Write-Host "  =======================================" -ForegroundColor DarkMagenta
-    Write-Host "          ATUALIZACAO DA STEAM" -ForegroundColor Magenta
-    Write-Host "  =======================================" -ForegroundColor DarkMagenta
+    Write-Host "  =======================================" `
+        -ForegroundColor DarkMagenta
+    Write-Host "          ATUALIZACAO DA STEAM" `
+        -ForegroundColor Magenta
+    Write-Host "  =======================================" `
+        -ForegroundColor DarkMagenta
     Write-Host ""
-    Write-Host "  Aguarde enquanto preparamos tudo..." -ForegroundColor Gray
+    Write-Host "  Aguarde enquanto preparamos tudo..." `
+        -ForegroundColor Gray
     Write-Host ""
 }
 
@@ -59,38 +70,51 @@ function Mostrar-Sucesso {
     Clear-Host
 
     Write-Host ""
-    Write-Host "  =======================================" -ForegroundColor DarkGreen
-    Write-Host "          ATUALIZACAO CONCLUIDA" -ForegroundColor Green
-    Write-Host "  =======================================" -ForegroundColor DarkGreen
+    Write-Host "  =======================================" `
+        -ForegroundColor DarkGreen
+    Write-Host "          ATUALIZACAO CONCLUIDA" `
+        -ForegroundColor Green
+    Write-Host "  =======================================" `
+        -ForegroundColor DarkGreen
     Write-Host ""
 
     if ($SteamIniciada) {
-        Write-Host "  Tudo pronto! A Steam foi reiniciada." -ForegroundColor White
+        Write-Host "  Tudo pronto! A Steam foi reiniciada." `
+            -ForegroundColor White
     }
     else {
-        Write-Host "  Tudo pronto! Abra a Steam normalmente." -ForegroundColor White
+        Write-Host "  Atualizacao concluida." `
+            -ForegroundColor White
+        Write-Host "  Abra a Steam normalmente." `
+            -ForegroundColor White
     }
 
     Write-Host ""
-    Write-Host "  Fechando automaticamente em 3 segundos..." -ForegroundColor DarkGray
+    Write-Host "  Fechando automaticamente em 3 segundos..." `
+        -ForegroundColor DarkGray
     Write-Host ""
 }
 
 function Mostrar-Erro {
     param(
-        [string]$Mensagem
+        [string]$Etapa
     )
 
     Clear-Host
 
     Write-Host ""
-    Write-Host "  =======================================" -ForegroundColor DarkRed
-    Write-Host "       NAO FOI POSSIVEL CONCLUIR" -ForegroundColor Red
-    Write-Host "  =======================================" -ForegroundColor DarkRed
+    Write-Host "  =======================================" `
+        -ForegroundColor DarkRed
+    Write-Host "       NAO FOI POSSIVEL CONCLUIR" `
+        -ForegroundColor Red
+    Write-Host "  =======================================" `
+        -ForegroundColor DarkRed
     Write-Host ""
-    Write-Host "  $Mensagem" -ForegroundColor Yellow
+    Write-Host "  Falha durante: $Etapa." `
+        -ForegroundColor Yellow
     Write-Host ""
-    Write-Host "  Fechando automaticamente em 5 segundos..." -ForegroundColor DarkGray
+    Write-Host "  Fechando automaticamente em 5 segundos..." `
+        -ForegroundColor DarkGray
     Write-Host ""
 }
 
@@ -133,14 +157,12 @@ function Encontrar-Steam {
         $Caminhos += "$env:LOCALAPPDATA\Steam"
     }
 
-    $CaminhoEncontrado = $Caminhos |
+    return $Caminhos |
         Select-Object -Unique |
         Where-Object {
             $_ -and (Test-Path (Join-Path $_ "steam.exe"))
         } |
         Select-Object -First 1
-
-    return $CaminhoEncontrado
 }
 
 function Encerrar-Steam {
@@ -150,7 +172,7 @@ function Encerrar-Steam {
 
     $SteamExe = Join-Path $SteamPath "steam.exe"
 
-    # Solicita o encerramento normal primeiro
+    # Solicita primeiro o fechamento normal
     if (Test-Path $SteamExe) {
         try {
             Start-Process `
@@ -165,29 +187,11 @@ function Encerrar-Steam {
 
     Start-Sleep -Seconds 4
 
-    # Interrompe o servico da Steam
-    $ServicoSteam = Get-Service `
-        -ErrorAction SilentlyContinue |
-        Where-Object {
-            $_.Name -eq "Steam Client Service" -or
-            $_.DisplayName -eq "Steam Client Service"
-        } |
-        Select-Object -First 1
-
-    if ($ServicoSteam -and $ServicoSteam.Status -ne "Stopped") {
-        Stop-Service `
-            -Name $ServicoSteam.Name `
-            -Force `
-            -ErrorAction SilentlyContinue
-
-        Start-Sleep -Seconds 2
-    }
-
+    # Processos do cliente que precisam ser reiniciados
     $ProcessosSteam = @(
         "steam",
         "steamwebhelper",
         "GameOverlayUI",
-        "steamservice",
         "steamerrorreporter",
         "steamerrorreporter64",
         "steam_monitor",
@@ -195,9 +199,10 @@ function Encerrar-Steam {
         "steamxboxutil64"
     )
 
-    $TaskKill = Join-Path $env:SystemRoot "System32\taskkill.exe"
+    $TaskKill = Join-Path `
+        $env:SystemRoot `
+        "System32\taskkill.exe"
 
-    # Encerra os processos e todos os processos filhos
     foreach ($Processo in $ProcessosSteam) {
         if (Test-Path $TaskKill) {
             & $TaskKill `
@@ -209,8 +214,8 @@ function Encerrar-Steam {
         }
     }
 
-    # Aguarda ate que todos os processos fechem
-    $TempoLimite = (Get-Date).AddSeconds(20)
+    # Aguarda todos os processos encerrarem
+    $TempoLimite = (Get-Date).AddSeconds(15)
 
     do {
         $Restantes = Get-Process `
@@ -235,26 +240,81 @@ function Encerrar-Steam {
         -ErrorAction SilentlyContinue
 
     if ($Restantes) {
-        throw "Nao foi possivel encerrar completamente a Steam."
+        throw "A Steam nao foi encerrada completamente."
     }
 
     Start-Sleep -Seconds 2
+}
+
+function Baixar-Arquivo {
+    param(
+        [string]$Url,
+        [string]$Destino
+    )
+
+    if (Test-Path $Destino) {
+        Remove-Item `
+            -Path $Destino `
+            -Force `
+            -ErrorAction SilentlyContinue
+    }
+
+    try {
+        Invoke-WebRequest `
+            -Uri $Url `
+            -OutFile $Destino `
+            -UseBasicParsing `
+            -TimeoutSec 60 `
+            -Headers @{
+                "User-Agent" = "Mozilla/5.0"
+                "Cache-Control" = "no-cache"
+            } `
+            -ErrorAction Stop
+    }
+    catch {
+        if (Test-Path $Destino) {
+            Remove-Item `
+                -Path $Destino `
+                -Force `
+                -ErrorAction SilentlyContinue
+        }
+
+        $Curl = Get-Command `
+            "curl.exe" `
+            -ErrorAction SilentlyContinue
+
+        if (-not $Curl) {
+            throw "Falha ao baixar a atualizacao."
+        }
+
+        & $Curl.Source `
+            -L `
+            --fail `
+            --silent `
+            --show-error `
+            --output $Destino `
+            $Url
+
+        if ($LASTEXITCODE -ne 0) {
+            throw "Falha ao baixar a atualizacao."
+        }
+    }
+
+    if (-not (Test-Path $Destino)) {
+        throw "O download nao foi criado."
+    }
+
+    $Arquivo = Get-Item $Destino
+
+    if ($Arquivo.Length -lt 4) {
+        throw "O download recebido esta vazio."
+    }
 }
 
 function Validar-Zip {
     param(
         [string]$Caminho
     )
-
-    if (-not (Test-Path $Caminho)) {
-        throw "Nao foi possivel baixar a atualizacao."
-    }
-
-    $Arquivo = Get-Item $Caminho
-
-    if ($Arquivo.Length -lt 4) {
-        throw "O download recebido esta vazio."
-    }
 
     $Fluxo = [System.IO.File]::OpenRead($Caminho)
 
@@ -266,9 +326,12 @@ function Validar-Zip {
         $Fluxo.Dispose()
     }
 
-    # Arquivos ZIP comecam com as letras PK
-    if ($PrimeiroByte -ne 0x50 -or $SegundoByte -ne 0x4B) {
-        throw "O servidor nao retornou um arquivo ZIP valido."
+    # Arquivos ZIP validos comecam com PK
+    if (
+        $PrimeiroByte -ne 0x50 -or
+        $SegundoByte -ne 0x4B
+    ) {
+        throw "O servidor nao retornou um ZIP valido."
     }
 }
 
@@ -283,71 +346,57 @@ function Iniciar-Steam {
         return $false
     }
 
-    Start-Sleep -Seconds 3
+    Start-Sleep -Seconds 2
 
-    # Inicia o servico novamente, quando existir
-    $ServicoSteam = Get-Service `
-        -ErrorAction SilentlyContinue |
-        Where-Object {
-            $_.Name -eq "Steam Client Service" -or
-            $_.DisplayName -eq "Steam Client Service"
-        } |
-        Select-Object -First 1
+    for ($Tentativa = 1; $Tentativa -le 3; $Tentativa++) {
+        try {
+            Start-Process `
+                -FilePath $SteamExe `
+                -WorkingDirectory $SteamPath `
+                -ErrorAction SilentlyContinue |
+                Out-Null
+        }
+        catch {}
 
-    if ($ServicoSteam -and $ServicoSteam.Status -ne "Running") {
-        Start-Service `
-            -Name $ServicoSteam.Name `
+        Start-Sleep -Seconds 3
+
+        $ProcessoSteam = Get-Process `
+            -Name "steam" `
             -ErrorAction SilentlyContinue
+
+        if ($ProcessoSteam) {
+            return $true
+        }
+
+        try {
+            Start-Process `
+                -FilePath "steam://open/main" `
+                -ErrorAction SilentlyContinue |
+                Out-Null
+        }
+        catch {}
 
         Start-Sleep -Seconds 2
     }
 
-    try {
-        Start-Process `
-            -FilePath $SteamExe `
-            -WorkingDirectory $SteamPath `
-            -ErrorAction SilentlyContinue |
-            Out-Null
-    }
-    catch {}
-
-    Start-Sleep -Seconds 5
-
-    $ProcessoSteam = Get-Process `
-        -Name "steam" `
-        -ErrorAction SilentlyContinue
-
-    if ($ProcessoSteam) {
-        return $true
-    }
-
-    # Segunda tentativa usando o protocolo da Steam
-    try {
-        Start-Process `
-            -FilePath "steam://open/main" `
-            -ErrorAction SilentlyContinue |
-            Out-Null
-    }
-    catch {}
-
-    Start-Sleep -Seconds 3
-
-    $ProcessoSteam = Get-Process `
-        -Name "steam" `
-        -ErrorAction SilentlyContinue
-
-    return [bool]$ProcessoSteam
+    return $false
 }
 
 # Solicita administrador automaticamente
 if (-not (Testar-Administrador)) {
     Mostrar-Cabecalho
 
-    Write-Host "  Solicitando permissao de administrador..." -ForegroundColor Cyan
+    Write-Host "  Solicitando permissao de administrador..." `
+        -ForegroundColor Cyan
     Write-Host ""
 
     try {
-        $ComandoElevado = "irm '$ScriptUrl' | iex"
+        # Adiciona um parametro para evitar cache do GitHub
+        $ComandoElevado = (
+            "`$url = '${ScriptUrlBase}?ts=' + " +
+            "[DateTimeOffset]::UtcNow.ToUnixTimeSeconds(); " +
+            "irm `$url | iex"
+        )
 
         $Bytes = [Text.Encoding]::Unicode.GetBytes(
             $ComandoElevado
@@ -377,8 +426,21 @@ if (-not (Testar-Administrador)) {
         [Environment]::Exit(0)
     }
     catch {
-        Mostrar-Erro `
-            -Mensagem "A permissao de administrador nao foi concedida."
+        Clear-Host
+
+        Write-Host ""
+        Write-Host "  =======================================" `
+            -ForegroundColor DarkRed
+        Write-Host "       PERMISSAO NAO CONCEDIDA" `
+            -ForegroundColor Red
+        Write-Host "  =======================================" `
+            -ForegroundColor DarkRed
+        Write-Host ""
+        Write-Host "  A permissao de administrador e necessaria." `
+            -ForegroundColor Yellow
+        Write-Host ""
+        Write-Host "  Fechando em 5 segundos..." `
+            -ForegroundColor DarkGray
 
         Start-Sleep -Seconds 5
         [Environment]::Exit(1)
@@ -388,18 +450,21 @@ if (-not (Testar-Administrador)) {
 Mostrar-Cabecalho
 
 try {
+    $EtapaAtual = "verificar a instalacao"
     Mostrar-Etapa "Verificando a instalacao..."
 
     $SteamPath = Encontrar-Steam
 
     if (-not $SteamPath) {
-        throw "A Steam nao foi encontrada neste computador."
+        throw "A Steam nao foi encontrada."
     }
 
+    $EtapaAtual = "encerrar a Steam"
     Mostrar-Etapa "Encerrando completamente a Steam..."
 
     Encerrar-Steam -SteamPath $SteamPath
 
+    $EtapaAtual = "preparar a atualizacao"
     Mostrar-Etapa "Preparando a atualizacao..."
 
     if (Test-Path $PastaTemporaria) {
@@ -422,16 +487,16 @@ try {
         -Force |
         Out-Null
 
+    $EtapaAtual = "baixar a atualizacao"
     Mostrar-Etapa "Obtendo os dados necessarios..."
 
-    Invoke-WebRequest `
-        -Uri $ZipUrl `
-        -OutFile $ArquivoZip `
-        -UseBasicParsing `
-        -ErrorAction Stop
+    Baixar-Arquivo `
+        -Url $ZipUrl `
+        -Destino $ArquivoZip
 
     Validar-Zip -Caminho $ArquivoZip
 
+    $EtapaAtual = "extrair a atualizacao"
     Mostrar-Etapa "Aplicando a correcao..."
 
     Expand-Archive `
@@ -451,10 +516,12 @@ try {
         Select-Object -First 1
 
     if (-not $PastaEncontrada) {
-        throw "O conteudo recebido nao e valido."
+        throw "O conteudo do pacote nao e valido."
     }
 
     $Destino = Join-Path $SteamPath $NomePasta
+
+    $EtapaAtual = "instalar a atualizacao"
 
     if (Test-Path $Destino) {
         Remove-Item `
@@ -472,9 +539,10 @@ try {
         -ErrorAction Stop
 
     if (-not (Test-Path $Destino)) {
-        throw "Nao foi possivel aplicar a atualizacao."
+        throw "A atualizacao nao foi instalada."
     }
 
+    $EtapaAtual = "finalizar"
     Mostrar-Etapa "Finalizando..."
 
     if (Test-Path $PastaTemporaria) {
@@ -485,14 +553,30 @@ try {
             -ErrorAction SilentlyContinue
     }
 
-    $SteamIniciada = Iniciar-Steam -SteamPath $SteamPath
+    $SteamIniciada = Iniciar-Steam `
+        -SteamPath $SteamPath
 
-    Mostrar-Sucesso -SteamIniciada $SteamIniciada
+    Mostrar-Sucesso `
+        -SteamIniciada $SteamIniciada
 
     Start-Sleep -Seconds 3
     [Environment]::Exit(0)
 }
 catch {
+    try {
+        @(
+            "Data: $(Get-Date)"
+            "Etapa: $EtapaAtual"
+            "Erro: $($_.Exception.Message)"
+            ""
+            ($_ | Out-String)
+        ) | Set-Content `
+            -Path $ArquivoLog `
+            -Encoding UTF8 `
+            -Force
+    }
+    catch {}
+
     if (Test-Path $PastaTemporaria) {
         Remove-Item `
             -Path $PastaTemporaria `
@@ -501,13 +585,7 @@ catch {
             -ErrorAction SilentlyContinue
     }
 
-    $MensagemErro = $_.Exception.Message
-
-    if ([string]::IsNullOrWhiteSpace($MensagemErro)) {
-        $MensagemErro = "Ocorreu um erro durante a atualizacao."
-    }
-
-    Mostrar-Erro -Mensagem $MensagemErro
+    Mostrar-Erro -Etapa $EtapaAtual
 
     Start-Sleep -Seconds 5
     [Environment]::Exit(1)
