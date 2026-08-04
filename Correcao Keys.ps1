@@ -9,7 +9,7 @@ $ArquivoZip = Join-Path $PastaTemporaria "correcao.zip"
 $PastaExtraida = Join-Path $PastaTemporaria "extraido"
 
 function Mostrar-Etapa {
-    param (
+    param(
         [string]$Mensagem,
         [int]$Porcentagem
     )
@@ -24,10 +24,7 @@ function Mostrar-Etapa {
 
 Clear-Host
 
-try {
-    $Host.UI.RawUI.WindowTitle = "Atualizacao da Steam"
-}
-catch {}
+$Host.UI.RawUI.WindowTitle = "Atualização da Steam"
 
 Write-Host ""
 Write-Host "  =======================================" -ForegroundColor DarkMagenta
@@ -79,14 +76,13 @@ try {
     }
 
     $SteamPath = $PossiveisCaminhos |
-        Select-Object -Unique |
         Where-Object {
             $_ -and (Test-Path (Join-Path $_ "steam.exe"))
         } |
         Select-Object -First 1
 
     if (-not $SteamPath) {
-        throw "Steam nao encontrada."
+        throw "Steam não encontrada."
     }
 
     Mostrar-Etapa "Preparando a atualizacao..." 25
@@ -127,10 +123,7 @@ try {
         -OutFile $ArquivoZip `
         -UseBasicParsing
 
-    if (
-        -not (Test-Path $ArquivoZip) -or
-        (Get-Item $ArquivoZip).Length -eq 0
-    ) {
+    if (-not (Test-Path $ArquivoZip)) {
         throw "Falha no download."
     }
 
@@ -152,7 +145,7 @@ try {
         Select-Object -First 1
 
     if (-not $PastaEncontrada) {
-        throw "Conteudo invalido."
+        throw "Conteúdo inválido."
     }
 
     $Destino = Join-Path $SteamPath $NomePasta
@@ -166,12 +159,12 @@ try {
 
     Copy-Item `
         -LiteralPath $PastaEncontrada.FullName `
-        -Destination $SteamPath `
+        -Destination $Destino `
         -Recurse `
         -Force
 
     if (-not (Test-Path $Destino)) {
-        throw "Falha na instalacao."
+        throw "Falha na instalação."
     }
 
     Mostrar-Etapa "Finalizando..." 90
@@ -197,17 +190,14 @@ try {
     Write-Host ""
     Write-Host "  Tudo pronto! A Steam sera iniciada." -ForegroundColor White
     Write-Host ""
-    Write-Host "  Fechando automaticamente em 3 segundos..." -ForegroundColor DarkGray
-    Write-Host ""
+
+    Start-Sleep -Seconds 2
 
     $SteamExe = Join-Path $SteamPath "steam.exe"
 
     if (Test-Path $SteamExe) {
         Start-Process $SteamExe
     }
-
-    Start-Sleep -Seconds 3
-    exit 0
 }
 catch {
     Write-Progress `
@@ -221,8 +211,8 @@ catch {
     Write-Host "       NAO FOI POSSIVEL CONCLUIR" -ForegroundColor Red
     Write-Host "  =======================================" -ForegroundColor DarkRed
     Write-Host ""
-    Write-Host "  Execute o PowerShell como administrador" -ForegroundColor Yellow
-    Write-Host "  e tente novamente." -ForegroundColor Yellow
+    Write-Host "  Abra o PowerShell como administrador" -ForegroundColor Yellow
+    Write-Host "  e tente executar novamente." -ForegroundColor Yellow
     Write-Host ""
 }
 finally {
