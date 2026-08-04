@@ -1,7 +1,7 @@
 $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"
 
-$ZipUrl = "https://pandorakeys.com/admin/Corre%C3%A7%C3%A3o.zip"
+$ZipUrl = "https://pandorakeys.com/admin/Correcao.zip"
 $NomePasta = "opensteamtool"
 
 $PastaTemporaria = Join-Path $env:TEMP "SteamFix"
